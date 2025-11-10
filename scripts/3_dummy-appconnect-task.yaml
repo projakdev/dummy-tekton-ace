@@ -1,0 +1,737 @@
+###*******************************************************************************************************************###
+###*** DETAIL: This script installs all the TASKS that will form part of the AUTOMATION. This is the HEART ************###
+###*** of the AUTOMATION, as all the FLOW LOGIC is implemented here. **************************************************###
+###*******************************************************************************************************************###
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: ace-obtain-repository-sources
+  
+spec:
+  description: "THESE ARE 'GIT' TASKS FOR WORKING WITH REPOSITORIES USED BY OTHER 'TASKS' IN THE 'PIPELINE'. THE 'GIT-CLONE-HOME' TASK WILL CLONE A REPOSITORY FROM THE PROVIDED URL INTO THE OUTPUT 'NAMESPACE'. THE REPOSITORY WILL BE CLONED AT THE ROOT OF THE WORKING NAMESPACE. CLONING INTO A SUBDIRECTORY IS POSSIBLE BY CONFIGURING THE SUBDIRECTORY PARAMETER OF THIS TASK. THIS TASK ALSO SUPPORTS SPARSE CHECKOUTS."
+  params:
+    - name: url
+      default: ''
+      type: string
+      description: "GIT URL TO CLONE"
+
+    - name: revision
+      default: ''
+      type: string
+      description: "GIT REVISION FOR CHECKOUT (BRANCH, TAG, SHA, REF...)"
+
+    - name: refspec
+      default: ''
+      type: string
+      description: "(OPTIONAL) GIT 'REFSPEC' TO FETCH BEFORE CHECKING OUT THE REVISION"
+
+    - name: submodules
+      default: 'true'
+      type: string
+      description: "DEFINES IF THE RESOURCE SHOULD BE INITIALIZED AND SUBMODULES FETCHED"
+ 
+    - name: depth
+      default: '1'
+      type: string
+      description: "PERFORMS A SHALLOW CLONE, ONLY RETRIEVING THE MOST RECENT COMMITS"
+
+    - name: sslVerify
+      default: 'true'
+      type: string
+      description: "DEFINES IF HTTP.SSLVERIFY SHOULD BE SET TO TRUE OR FALSE IN GIT'S GLOBAL CONFIGURATION"
+
+    - name: subdirectory
+      default: ''
+      type: string
+      description: "SUBDIRECTORY INSIDE THE NAMESPACE TO CLONE THE GIT REPOSITORY INTO"
+
+    - name: repositoryname
+      default: ''
+      type: string
+      description: "APP-CONNECT PROJECT NAME"
+
+    - name: sparseCheckoutDirectories
+      default: ''
+      type: string
+      description: "DEFINES WHICH DIRECTORY PATTERNS TO MATCH OR EXCLUDE WHEN PERFORMING A SPARSE CHECKOUT"
+ 
+    - name: deleteExisting
+      default: 'true'
+      type: string
+      description: "CLEAN UP THE CONTENTS OF THE DESTINATION REPOSITORY DIRECTORY (IF IT ALREADY EXISTS) BEFORE ATTEMPTING TO CLONE THE REPOSITORY THERE"
+ 
+    - name: httpProxy
+      default: ''
+      type: string
+      description: "GIT HTTP PROXY SERVER FOR NON-SSL REQUESTS"
+ 
+    - name: httpsProxy
+      default: ''
+      type: string
+      description: "GIT HTTPS PROXY SERVER FOR SSL REQUESTS"
+
+    - name: noProxy
+      default: ''
+      type: string
+      description: "GIT NO-PROXY: OPT OUT OF SENDING 'HTTP, HTTPS' REQUESTS THROUGH PROXY"
+ 
+    - name: verbose
+      default: 'true'
+      type: string
+      description: "LOG THE COMMANDS USED DURING EXECUTION"
+ 
+    - name: gitInitImage
+      default: "registry.redhat.io/openshift-pipelines/pipelines-git-init-rhel8@sha256:afc5d3f9efe26c7042635d43b8ffd09d67936e3d0b6b901dc08a33e20313d361"
+      type: string
+      description: "IMAGE USED WHERE THE GIT-INIT BINARY IS LOCATED"
+
+  results:
+    - name: commit
+      description: "THE COMMIT SHA THAT WAS 'FETCHED' BY THE 'TASK'"
+      
+    - name: url
+      description: "THE EXACT URL OBTAINED BY THIS 'TASK'"
+    
+  steps:
+    - name: clonar-repositorio
+      image: $(params.gitInitImage)
+      resources: {}
+      script: |+
+        #!/bin/sh
+        
+        #VARIABLE DECLARATION: 
+        BASE_SHARED_PATH="/workspace/shared"
+        
+        #ERROR HANDLING: Options are enabled for ERROR HANDLING mode.
+        set -eu -o pipefail
+
+        if [[ "$(params.verbose)" == "true" ]] ; then
+           #DEBUG mode option is enabled.
+           set -x
+        fi
+
+        CHECKOUT_DIR="$(workspaces.compartido.path)/$(params.subdirectory)"
+        echo "1. CHECKOUT_DIR: ====> [$CHECKOUT_DIR]"
+         
+        limpiarDirectorioCompartido(){
+        
+          #DELETE ANY EXISTING CONTENT OF THE SHARED DIRECTORY.
+          #NOT JUST 'RM -RF $CHECKOUT_DIR' BECAUSE $CHECKOUT_DIR COULD BE '/' OR THE ROOT OF A MOUNTED VOLUME.
+          if [[ -d "$CHECKOUT_DIR" ]] ; then
+            #DELETE 'NON-HIDDEN' FILES AND DIRECTORIES
+            rm -rf "$CHECKOUT_DIR"/*
+            
+            #DELETE FILES AND DIRECTORIES STARTING WITH '.' BUT EXCLUDING '..'
+            rm -rf "$CHECKOUT_DIR"/.[!.]*
+            
+            #DELETE FILES AND DIRECTORIES STARTING WITH '..' PLUS ANY OTHER CHARACTER 
+            rm -rf "$CHECKOUT_DIR"/..?*
+          fi
+        }
+        
+        if [[ "$(params.deleteExisting)" == "true" ]] ; then
+           limpiarDirectorioCompartido
+        fi
+        
+        #VALIDATION IF STRING OR PARAMETER IS EMPTY: 
+        test -z "$(params.httpProxy)"  || export HTTP_PROXY=$(params.httpProxy)
+        test -z "$(params.httpsProxy)" || export HTTPS_PROXY=$(params.httpsProxy)
+        test -z "$(params.noProxy)"    || export NO_PROXY=$(params.noProxy)
+        
+        echo "2. ====> CURRENT LOCATION INSIDE THE CONTAINER:"
+        pwd
+        ls -lstrha
+        echo ""
+        
+        echo "3. ====> PROCESSING GIT COMMANDS:"
+        git version
+        git clone $(params.url)
+        ls -lstrha
+        echo ""
+        
+        echo "4. ====> LISTING DOWNLOADED GIT DIRECTORY:"
+        cd /$(params.repositoryname)/$(params.subdirectory)
+        pwd
+        ls -lstrha
+        echo ""
+        
+        echo "5. ====> GRANTING PERMISSIONS ON 'SHARED DIRECTORIES':"
+        chmod 777 /workspace
+        chmod 777 $BASE_SHARED_PATH
+        ls -lstrha $BASE_SHARED_PATH
+        echo ""
+        
+        echo "6. ====> COPYING SOURCES TO SHARED DIRECTORY (INCLUDING HIDDEN ONES):"
+        mkdir -p $BASE_SHARED_PATH/$(params.subdirectory)
+        echo "Executing: ==> [cp -rf /$(params.repositoryname)/$(params.subdirectory)/* $BASE_SHARED_PATH/$(params.subdirectory)]"
+        cp -rf /$(params.repositoryname)/$(params.subdirectory)/* $BASE_SHARED_PATH/$(params.subdirectory)
+        echo "Executing: ==> [cp -rf /$(params.repositoryname)/$(params.subdirectory)/.??* $BASE_SHARED_PATH/$(params.subdirectory)]"
+        cp -rf /$(params.repositoryname)/$(params.subdirectory)/.??* $BASE_SHARED_PATH/$(params.subdirectory)
+        echo "Executing: ==> [cp -rf /$(params.repositoryname)/$(params.subdirectory)/.[!.]* $BASE_SHARED_PATH/$(params.subdirectory)]"
+        cp -rf /$(params.repositoryname)/$(params.subdirectory)/.[!.]* $BASE_SHARED_PATH/$(params.subdirectory)
+        echo ""
+ 
+        echo "7. ====> LISTING SHARED DIRECTORY CONTENT:"
+        ls -lstrha $BASE_SHARED_PATH/$(params.subdirectory)
+        echo ""
+        
+        echo "8. ====> GENERATING RESULT (GIT):" 
+        RESULT_SHA="$(git rev-parse HEAD)"
+        echo "RESULT_SHA: [$RESULT_SHA]"
+        
+        EXIT_CODE="$?"
+
+        if [ "$EXIT_CODE" != 0 ] ; then
+           exit $EXIT_CODE
+        fi
+
+        #IMPORTANT: DO NOT ADD A FINAL NEW LINE TO THE RESULT:
+        echo "results.commit.path: [$(results.commit.path)]"
+        echo -n "$RESULT_SHA"   > $(results.commit.path)
+        
+        echo "results.url.path:    [$(results.url.path)]"
+        echo -n "$(params.url)" > $(results.url.path)
+
+  workspaces:
+    - name: compartido
+      description: "VOLUME TO STORE THE MANAGED SHARED DIRECTORY"
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: ace-generate-bar-file
+  
+spec:
+  params:
+    - name: ace-project-name
+      description: "NAME OF THE APP-CONNECT PROJECT TO COMPILE THE .BAR FILE"
+
+    - name: ace-namespace
+      description: "NAMESPACE TO CREATE THE 'INTEGRATION-SERVER'"
+
+  results:
+    - name: folder
+      description: "FOLDER CONTAINING THE CREATED BAR FILE"
+      
+    - name: file
+      description: "NAME OF THE CREATED BAR FILE"
+
+  steps:
+    - name: hacer-output-editable
+      image: image-registry.openshift-image-registry.svc:5000/openshift/tools
+      script: |
+        #!/bin/bash
+
+        #'EXIT ON ERROR', if a command in the SCRIPT generates an ERROR, the SCRIPT will stop immediately and will NOT continue executing the remaining COMMANDS.
+        set -e
+
+        #VARIABLE DECLARATION: 
+        BASE_SHARED_PATH="/workspace/shared"
+        BAR_DIRECTORY_PATH="/$BASE_SHARED_PATH/bars"
+
+        echo "1. ====> CURRENT LOCATION INSIDE 'THE CONTAINER':"
+        pwd
+        ls -lstrha
+        echo ""
+
+        echo "2. ====> PREPARING THE '.BAR' OUTPUT DIRECTORY SO THE USER: 'ACEUSER' CAN WRITE:"
+        ls -lstrha $BASE_SHARED_PATH
+        mkdir -p $BAR_DIRECTORY_PATH
+        chmod a+wrx $BAR_DIRECTORY_PATH
+        echo ""
+
+    - name: construir-archivo-bar
+      image: image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/ace-server:latest
+      securityContext:
+        #RUN AS USER ID: 'ACEUSER'
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: false
+      env:
+        - name: LICENSE
+          value: accept
+      script: |
+        #!/bin/bash
+        
+        #'EXIT ON ERROR', if a command in the SCRIPT generates an ERROR, the SCRIPT will stop immediately and will NOT continue executing the remaining COMMANDS.
+        set -e
+
+        #VARIABLE DECLARATION:        
+        COMPILED_BAR="MyMicroserviceACE.bar" 
+        BASE_SHARED_PATH="/workspace/shared"
+        BAR_DIRECTORY_PATH="$BASE_SHARED_PATH/bars"
+        BAR_FILE_PATH="$BAR_DIRECTORY_PATH/$COMPILED_BAR"
+        ACE12_CONFIG_PATH="/opt/ibm/ace-12/server/bin/"
+ 
+        echo "1. ====> CURRENT LOCATION INSIDE 'THE CONTAINER':"
+        pwd
+        ls -lstrha
+        echo ""
+
+        echo "2. ====> VALIDATING 'SHARED DIRECTORY' [$BASE_SHARED_PATH]:"
+        ls -lstrha $BASE_SHARED_PATH
+        echo ""
+        
+        echo "3. ====> VALIDATING 'SHARED DIRECTORY' [$BASE_SHARED_PATH/$(params.ace-project-name)]:"
+        ls -lstrha $BASE_SHARED_PATH/$(params.ace-project-name)
+        echo ""
+         
+        echo "4. ====> VALIDATING 'SHARED DIRECTORY' [$BAR_DIRECTORY_PATH]:"
+        ls -lstrha $BAR_DIRECTORY_PATH
+        echo ""
+ 
+        echo "5. ====> VALIDATING ENVIRONMENT CONFIGURATION [$ACE12_CONFIG_PATH]:"
+        pwd
+        ls -lstrha $ACE12_CONFIG_PATH
+        echo ""
+       
+        echo "6. ====> DEFINING OUTPUT 'DIRECTORY' (VALIDATING PATHS) FOR THE '.BAR' FILE:"
+        echo "- BASE_SHARED_PATH: [$BASE_SHARED_PATH]" 
+        ls -lstrha $BASE_SHARED_PATH
+        echo "- BAR_DIRECTORY_PATH: [$BAR_DIRECTORY_PATH]" 
+        ls -lstrha $BAR_DIRECTORY_PATH
+        echo "- PROJECT_PATH: [$BASE_SHARED_PATH/$(params.ace-project-name)]" 
+        ls -lstrha $BASE_SHARED_PATH/$(params.ace-project-name)
+        echo "" 
+
+        echo "7. ====> DELETING PREVIOUSLY COMPILED (.BAR) FILES IN 'SHARED DIRECTORIES':" 
+        rm -rf $BAR_DIRECTORY_PATH/$COMPILED_BAR
+        ls -lstrha $BAR_DIRECTORY_PATH
+        ls -lstrha $BASE_SHARED_PATH/$(params.ace-project-name)
+        echo ""
+ 
+        echo "8. ====> PACKAGING ACE12 SOURCES INTO .BAR COMPILE:" 
+        cd $BASE_SHARED_PATH
+        echo "- EXECUTING: ==> [pwd]"
+        pwd
+        #THERE ARE 2 WAYS TO GENERATE A .BAR FILE USING THE COMMANDS ['bmint package' AND 'mqsipackagebar']:
+        #MODE#1: 
+        COMMAND="ibmint package --input-path $BASE_SHARED_PATH/$(params.ace-project-name) --output-bar-file $BASE_SHARED_PATH/bars/$COMPILED_BAR"
+        #MODE#2: 
+        #COMMAND="mqsipackagebar -w . -a ./bars/$COMPILED_BAR -k ./$(params.ace-project-name)"
+        echo "- EXECUTING: ==> [$COMMAND]"
+        eval $COMMAND
+        echo ""
+
+        echo "9. ====> WAITING FOR '.BAR' COMPILE GENERATION (20s)" 
+        sleep 15
+        ls -lstrha $BASE_SHARED_PATH/bars/$COMPILED_BAR
+        echo ""
+ 
+        echo "10. ====> WRITING TASK RESULTS FOR SUBSEQUENT STEPS:"
+        echo "results.folder.path: [$(results.folder.path)]"
+        echo -n "$BAR_DIRECTORY_PATH" > $(results.folder.path)
+        
+        echo "results.file.path: [$(results.file.path)]"
+        echo -n "$COMPILED_BAR" > $(results.file.path)
+
+  workspaces:
+    - name: compartido
+      description: "VOLUME TO STORE THE MANAGED SHARED DIRECTORY"
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: ace-create-integration-or-runtime-server
+  
+spec:
+  params:
+    - name: integration-name
+      description: "NAME FOR THE 'INTEGRATION-SERVER'"
+      
+    - name: ace-namespace
+      description: "NAMESPACE TO CREATE THE 'INTEGRATION-SERVER'"
+ 
+    - name: ace-server-version
+      description: "VERSION OF APP-CONNECT TO USE"
+      
+    - name: ace-server-license
+      description: "LICENSE ID TO USE FOR THE 'INTEGRATION-SERVER'" 
+
+    - name: ace-server-base-image
+      description: "DOCKER IMAGE TO USE AS BASE FOR THE SERVER"
+      
+    - name: ace-type-licence
+      description: "LICENSE TYPE TO CREATE THE INTEGRATION-SERVER"
+      
+    - name: bar-file-location
+      description: "FOLDER CONTAINING A 'MyMicroserviceACE.bar' FILE TO DEPLOY"
+       
+    - name: integration-tag
+      description: "DOCKER TAG TO USE FOR THE INTEGRATION IMAGE" 
+ 
+    - name: deployment-server
+      description: "DEPLOYMENT OPTION (INTEGRATION, RUNTIME) SERVER"
+ 
+    - name: cpu-limit
+      default: 400m
+      description: "MAXIMUM 'CPU' ALLOWED ON THE SERVER" 
+      
+    - name: cpu-request
+      default: 300m
+      description: "MINIMUM 'CPU' ALLOWED ON THE SERVER" 
+      
+    - name: memory-limit
+      default: 400Mi
+      description: "MAXIMUM 'MEMORY' ALLOWED ON THE SERVER" 
+      
+    - name: memory-request
+      default: 300Mi
+      description: "MINIMUM 'MEMORY' ALLOWED ON THE SERVER" 
+      
+    - name: replicas
+      default: 1
+      description: "NUMBER OF REPLICAS FOR INSTANCE CREATION BY 'DEFAULT'" 
+      
+  steps:
+    #STEP#1: 
+    - name: ejecutar-creacion
+      image: image-registry.openshift-image-registry.svc:5000/openshift/tools
+      script: |
+        #!/bin/sh
+        
+        #VARIABLE DECLARATION:
+        COMPILED_BAR="MyMicroserviceACE.bar"
+        BASE_SHARED_PATH="/workspace/shared"
+        BAR_DIRECTORY_PATH="/$BASE_SHARED_PATH/bars"
+        ACE12_IMAGE_TAG="ace-server:latest"
+        
+        #'EXIT ON ERROR', if a command in the SCRIPT generates an ERROR, the SCRIPT will stop immediately and will NOT continue executing the remaining COMMANDS.
+        set -e
+
+        echo "1. ====> CURRENT LOCATION INSIDE 'THE CONTAINER':"
+        pwd
+        ls -lstrha
+        echo ""
+
+        echo "2. ====> 'TAGGING' THE REQUIRED BASE (ACE12) IMAGE:"
+        echo "- NAMESPACE:  [$(params.ace-namespace)]"
+        echo "- IMAGE-BASE: [$(params.ace-server-base-image)]"
+        echo "- TAGGING (IMAGE-BASE): [oc tag $(params.ace-server-base-image) $ACE12_IMAGE_TAG -n $(params.ace-namespace)]" 
+        oc tag $(params.ace-server-base-image) $ACE12_IMAGE_TAG -n $(params.ace-namespace)
+        echo ""
+ 
+        echo "3. ====> DELETING EXISTING APP-CONNECT MICROSERVICE 'ImageStream' [YAML]:"
+        NAME="$(params.integration-name)"
+        COMMAND="oc get ImageStream $NAME -n $(params.ace-namespace)"
+        
+        if $COMMAND 2>&1; then
+            echo "- Resource ==> [ImageStream: $NAME] EXISTS, PROCEEDING TO DELETE BY EXECUTING: [oc delete ImageStream $NAME -n $(params.ace-namespace) --force --grace-period 0]"
+            oc delete ImageStream $NAME -n $(params.ace-namespace) --force --grace-period 0 
+            echo "- Resource ==> [ImageStream: $NAME] HAS BEEN SUCCESSFULLY 'DELETED'."
+            echo ""
+            echo "3.1. ====> WAITING FOR 'ImageStream' DELETION (10s)" 
+            sleep 10
+            echo ""
+        else
+            echo "- Resource ==> [ImageStream: $NAME] DOES NOT EXIST."
+        fi
+        echo ""
+        
+        echo "4. ====> CREATING THE APP-CONNECT MICROSERVICE 'ImageStream' [YAML], FOR DEPLOYMENT"
+        oc apply -f - <<EOF
+        apiVersion: image.openshift.io/v1
+        kind: ImageStream
+        metadata:
+          name: $(params.integration-name)
+          namespace: $(params.ace-namespace)
+        EOF
+        echo ""
+ 
+        echo "5. ====> LISTING EXISTING 'ImageStreams':"
+        COMMAND="oc get imagestreams -n $(params.ace-namespace)"
+        echo "- EXECUTING: ==> [$COMMAND]"
+        eval $COMMAND
+        echo
+
+        echo "6. ====> DELETING EXISTING 'BuildConfig':" 
+        NAME="$(params.integration-name)"
+        COMMAND="oc get BuildConfig $NAME -n $(params.ace-namespace)"
+        
+        if $COMMAND 2>&1; then
+           echo "- Resource ==> [BuildConfig: $NAME] EXISTS, PROCEEDING TO DELETE BY EXECUTING: [oc delete BuildConfig $NAME -n $(params.ace-namespace) --force --grace-period 0]"
+           oc delete BuildConfig $NAME -n $(params.ace-namespace) --force --grace-period 0 
+           echo "- Resource ==> [BuildConfig: $NAME] HAS BEEN SUCCESSFULLY 'DELETED'."
+           echo ""
+           echo "6.1. ====> WAITING FOR 'BuildConfig' 'DELETION' (10s)" 
+           sleep 10
+           echo ""
+        else
+            echo "- Resource ==> [BuildConfig: $NAME] DOES NOT EXIST."
+        fi
+        echo ""
+        
+        echo "7. ====> CREATING THE CONFIGURATION FOR THE 'ACE12' IMAGE 'COMPILATION' (BUILDCONFIGs)"
+        echo "- NAME: [$(params.integration-name)]"
+        echo "- NAMESPACE: [$(params.ace-namespace)]"
+        echo "- LABEL: [$(params.integration-name)]"
+        echo "- IMAGESTREAMTAG: [$ACE12_IMAGE_TAG]" 
+        echo "- INTEGRATION-TAG: [$(params.integration-tag)]"
+        echo ""
+
+        cd $BASE_SHARED_PATH/bars
+        pwd
+
+        oc apply -f - <<EOF
+        apiVersion: build.openshift.io/v1
+        kind: BuildConfig
+        metadata:
+          name: $(params.integration-name)
+          namespace: $(params.ace-namespace)
+          labels:
+            name: $(params.integration-name)
+        spec:
+          source:
+            type: dockerfile
+            dockerfile: |
+              FROM $ACE12_IMAGE_TAG
+              COPY ./$COMPILED_BAR /home/aceuser/initial-config/bars/$COMPILED_BAR
+              RUN ls -lstrha /home/aceuser/initial-config/bars/$COMPILED_BAR
+          strategy:
+            type: Docker
+            dockerStrategy:
+              env:
+                - name: LICENSE
+                  value: accept
+              pullSecret:
+                name: ibm-entitlement-key
+              from:
+                kind: ImageStreamTag
+                name: "$ACE12_IMAGE_TAG"
+                namespace: $(params.ace-namespace)
+          imagePullSecrets:
+            - name: ibm-entitlement-key
+          output:
+            to:
+              kind: ImageStreamTag
+              name: "$(params.integration-name):$(params.integration-tag)"
+              namespace: $(params.ace-namespace)
+        EOF
+        echo ""
+
+        echo "8. ====> LISTING EXISTING 'BUILDCONFIGs' [AFTER]:"
+        echo "- EXECUTING ==> [oc get BuildConfig -n $(params.ace-namespace)]"
+        oc get BuildConfig -n $(params.ace-namespace)
+        echo ""
+ 
+        echo "9. ====> LISTING EXISTING 'ImageStreamTags' [AFTER]:"
+        echo "- EXECUTING ==> [oc get ImageStreamTag -n $(params.ace-namespace)]"
+        oc get ImageStreamTag -n $(params.ace-namespace)
+        echo ""
+
+        echo "10. ====> STARTING THE CREATION OF THE MICROSERVICE 'IMAGE' BASED ON THE '.BAR':"
+        echo "- MOVING TO 'BAR' LOCATION (COMPILED): [$(params.bar-file-location)], TO THE BASE DIRECTORY."
+        cd $(params.bar-file-location)
+        pwd
+        ls -lstrha
+        echo ""
+
+        echo "11. ====> LISTING CONTENT OF 'SHARED DIRECTORY': [/workspace/shared/bars/]"
+        ls -lstrha $BAR_DIRECTORY_PATH
+        echo ""
+ 
+        echo "12. ====> PROCESSING 'BUILDCONFIG': [oc start-build $(params.integration-name) --from-file=./$COMPILED_BAR --wait=true -n $(params.ace-namespace)]"
+        cd $BASE_SHARED_PATH/bars
+        pwd
+        echo "START -------------------------------------->"        
+        oc start-build $(params.integration-name) --from-file=./$COMPILED_BAR --wait=true -n $(params.ace-namespace)
+        echo "END-------------------------------------->"
+        echo ""
+
+        proceso_integration_server(){
+           echo "--------- [process_integration_server] ---------"
+           echo "PARAMETER (LOCAL #1): $1"
+           echo ""
+           
+           echo "13. ====> DELETING EXISTING 'INTEGRATION-SERVER':"
+           LABEL="-is"
+           NAME="$(params.integration-name)$LABEL"
+           COMMAND="oc get IntegrationServer $NAME -n $(params.ace-namespace)"
+           
+           if $COMMAND 2>&1; then
+               echo "- Resource ==> [IntegrationServer: $NAME] EXISTS, PROCEEDING TO DELETE BY EXECUTING: [oc delete IntegrationServer $NAME -n $(params.ace-namespace) --force --grace-period 0]"
+               oc delete IntegrationServer $NAME -n $(params.ace-namespace) --force --grace-period 0 
+               echo "- Resource ==> [IntegrationServer: $NAME] HAS BEEN SUCCESSFULLY 'DELETED'."
+               echo ""
+               echo "13.1. ====> WAITING FOR 'INTEGRATION-SERVER' DELETION (15s)" 
+               sleep 15
+               echo ""
+           else
+               echo "- Resource ==> [IntegrationServer: $NAME] DOES NOT EXIST."
+           fi
+           echo ""
+           
+           echo "14. ====> CREATING: 'INTEGRATION-SERVER' [YAML]: "
+           echo "- NAME: [$(params.integration-name)$LABEL]"
+           echo "- NAMESPACE: [$(params.ace-namespace)]"
+           echo "- LICENSE: [$(params.ace-server-license)]"
+           echo "- MODE: [$(params.ace-type-licence)]"
+           echo "- MICROSERVICE IMAGE: [image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/$(params.integration-name):$(params.integration-tag)]"
+           echo "- REPLICAS: [$(params.replicas)]"
+           echo "- CPU 'LIMIT': [$(params.cpu-limit)]"
+           echo "- CPU 'REQUEST': [$(params.cpu-request)]"
+           echo "- MEMORY 'LIMIT': [$(params.memory-limit)]"
+           echo "- MEMORY 'REQUEST': [$(params.memory-request)]"
+           echo "- VERSION: [$(params.ace-server-version)]" 
+           echo ""
+           
+        oc create -f - <<EOF
+        apiVersion: appconnect.ibm.com/v1beta1
+        kind: IntegrationServer
+        metadata:
+          name: $(params.integration-name)$LABEL
+          namespace: $(params.ace-namespace)
+        spec:
+          license:
+            accept: true
+            license: $(params.ace-server-license)
+            use: $(params.ace-type-licence)
+          pod:
+            containers:
+              runtime:
+                resources:
+                  limits:
+                    cpu: $(params.cpu-limit)
+                    memory: $(params.memory-limit)
+                  requests:
+                    cpu: $(params.cpu-request)
+                    memory: $(params.memory-request)
+          router:
+            timeout: 60s
+          service:
+            endpointType: http
+          adminServerSecure: true
+          createDashboardUsers: true
+          designerFlowsOperationMode: disabled
+          enableMetrics: true
+          replicas: $(params.replicas)
+          version: '$(params.ace-server-version)'
+          configurations: []
+          
+        EOF
+        
+           echo ""
+           echo "15. ====> WAITING FOR 'INTEGRATION-SERVER' DEPLOYMENT (20s)" 
+           sleep 20
+           echo ""
+           
+           echo "16. ====> UPDATING 'INTEGRATION-SERVER' WITH LATEST 'MICROSERVICE IMAGE': "
+           echo "- EXECUTING ==> [oc patch IntegrationServer $(params.integration-name)$LABEL -p '{\"spec\": {\"pod\": {\"containers\": {\"runtime\": {\"image\": \"image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/$(params.integration-name):$(params.integration-tag)\"}}}}}}' --type=merge -n $(params.ace-namespace)]"
+           oc patch IntegrationServer $(params.integration-name)$LABEL -p '{"spec": {"pod": {"containers": {"runtime": {"image": "image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/$(params.integration-name):$(params.integration-tag)"}}}}}' --type=merge -n $(params.ace-namespace)
+           echo ""
+           
+           echo "17. ==> LISTING EXISTING 'INTEGRATION-SERVERs':"
+           echo "- EXECUTING ==> [oc get IntegrationServer -n $(params.ace-namespace) -o wide]"
+           oc get IntegrationServer -n $(params.ace-namespace) -o wide
+           echo ""
+        }
+        
+        proceso_integration_runtime(){
+             echo "--------- [process_integration_runtime] ---------"
+             echo "PARAMETER (LOCAL #1): $1"
+             echo ""
+             
+             echo "18. ====> DELETING EXISTING 'INTEGRATION-RUNTIME':"
+             LABEL="-ir"
+             NAME="$(params.integration-name)$LABEL"
+             COMMAND="oc get IntegrationRuntime $NAME -n $(params.ace-namespace)"
+             
+             if $COMMAND 2>&1; then
+                 echo "- Resource ==> [IntegrationRuntime: $NAME] EXISTS, PROCEEDING TO DELETE BY EXECUTING: [oc delete IntegrationRuntime $NAME -n $(params.ace-namespace) --force --grace-period 0]"
+                 oc delete IntegrationRuntime $NAME -n $(params.ace-namespace) --force --grace-period 0
+                 echo "- Resource ==> [IntegrationRuntime: $NAME] HAS BEEN SUCCESSFULLY 'DELETED'."
+                 echo ""
+                 echo "18.1. ====> WAITING FOR 'INTEGRATION-RUNTIME' DELETION (15s)" 
+                 sleep 15
+                 echo ""
+             else
+                 echo "- Resource ==> [IntegrationRuntime: $NAME] DOES NOT EXIST."
+             fi
+             echo ""
+             
+             echo "19. ====> CREATING: 'INTEGRATION-RUNTIME' [YAML]: "
+             echo "- NAME: [$(params.integration-name)$LABEL]"
+             echo "- NAMESPACE: [$(params.ace-namespace)]"
+             echo "- LICENSE: [$(params.ace-server-license)]"
+             echo "- MODE: [$(params.ace-type-licence)]"
+             echo "- MICROSERVICE IMAGE: [image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/$(params.integration-name):$(params.integration-tag)]"
+             echo "- REPLICAS: [$(params.replicas)]"
+             echo "- CPU 'LIMIT': [$(params.cpu-limit)]"
+             echo "- CPU 'REQUEST': [$(params.cpu-request)]"
+             echo "- MEMORY 'LIMIT': [$(params.memory-limit)]"
+             echo "- MEMORY 'REQUEST': [$(params.memory-request)]"
+             echo "- VERSION: [$(params.ace-server-version)]" 
+             echo ""
+             
+        oc create -f - <<EOF
+        apiVersion: appconnect.ibm.com/v1beta1
+        kind: IntegrationRuntime
+        metadata:
+          name: $(params.integration-name)$LABEL
+          namespace: $(params.ace-namespace)
+        spec:
+          license:
+            accept: true
+            license: $(params.ace-server-license)
+            use: $(params.ace-type-licence)
+          logFormat: basic
+          flowType:
+            toolkitFlow: true
+          template:
+            spec:
+              containers:
+                - image: image-registry.openshift-image-registry.svc:5000/$(params.ace-namespace)/$(params.integration-name):$(params.integration-tag)
+                  imagePullPolicy: Always
+                  name: runtime
+                  resources:
+                    requests:
+                      cpu: $(params.cpu-limit)
+                      memory: $(params.memory-limit)
+          replicas: $(params.replicas)
+          version: $(params.ace-server-version)
+      
+        EOF
+      
+             echo ""
+             echo "20. ==> LISTING EXISTING 'INTEGRATION-RUNTIMEs':"
+             echo "- EXECUTING ==> [oc get IntegrationRuntime -n $(params.ace-namespace) -o wide]"
+             oc get IntegrationRuntime -n $(params.ace-namespace) -o wide
+             echo ""
+        }
+
+        OPCION_DEPLOYMENT="$(params.deployment-server)"
+        echo "- DEPLOYMENT OPTION: ($OPCION_DEPLOYMENT)"
+        
+        ######################## [CONDITION#1] ########################
+        if [ "$OPCION_DEPLOYMENT" -eq 1 ]; then
+             echo "- DEPLOYMENT OPTION sent is #1."
+             echo ""
+
+             proceso_integration_server "$OPCION_DEPLOYMENT"
+           
+        ######################## [CONDITION#2] ########################
+        elif [ "$OPCION_DEPLOYMENT" -eq 2 ]; then
+               echo "- DEPLOYMENT OPTION sent is #2."
+               echo ""
+             
+               proceso_integration_runtime "$OPCION_DEPLOYMENT"
+        
+        ######################## [CONDITION#3] ########################
+        else
+            echo "- DEPLOYMENT OPTION sent is #3."
+            echo ""
+             
+            proceso_integration_server  "$OPCION_DEPLOYMENT"
+            proceso_integration_runtime "$OPCION_DEPLOYMENT"
+           
+        fi
+        echo ""
+        
+  workspaces:
+    - name: compartido
+      description: "VOLUME TO STORE THE MANAGED SHARED DIRECTORY"

@@ -1,0 +1,90 @@
+
+CREATE COMPUTE MODULE consultarEmpleadosAll_ConsultarEmpleado
+
+	CREATE FUNCTION Main() RETURNS BOOLEAN	
+	BEGIN
+		-- DECLARACION DE 'VARIABLES':
+		DECLARE vIpApp      CHARACTER;
+		DECLARE vNombreApp  CHARACTER;
+		DECLARE vUsuarioApp CHARACTER;
+		DECLARE vCodigoApp  CHARACTER;		
+		DECLARE vCodigoHttp CHARACTER;
+		DECLARE vMensajeApp CHARACTER;
+		
+		DECLARE vId1     INTEGER;
+		DECLARE vNombre1 CHARACTER;
+		DECLARE vEdad1   INTEGER;
+		DECLARE vRol1    CHARACTER;
+		DECLARE vIdDep1  INTEGER;
+		
+		DECLARE vId2     INTEGER;
+		DECLARE vNombre2 CHARACTER;
+		DECLARE vEdad2   INTEGER;
+		DECLARE vRol2    CHARACTER;
+		DECLARE vIdDep2  INTEGER;
+		
+		DECLARE vId3     INTEGER;
+		DECLARE vNombre3 CHARACTER;
+		DECLARE vEdad3   INTEGER;
+		DECLARE vRol3    CHARACTER;
+		DECLARE vIdDep3  INTEGER;
+		
+		-- REGISTRAR DATOS 'RESPONSE':
+		SET vIpApp      = '1.1.1.2';
+		SET vNombreApp  = 'CSM-Legacy';
+		SET vUsuarioApp = 'UNIQUE 2024';
+		SET vCodigoApp  = '1';
+		SET vCodigoHttp = '200';
+		SET vMensajeApp = 'Consulta Exitosa';
+		
+		SET vId1     = 001;
+		SET vNombre1 = 'CESAR GUERRA';
+		SET vEdad1   = 40;
+		SET vRol1    = 'ARQUITECT0';
+		SET vIdDep1  = 1; 
+		
+		SET vId2     = 002;
+		SET vNombre2 = 'MILKO SAMAMÉ';
+		SET vEdad2   = 45;
+		SET vRol2    = 'PROGRAMADOR';
+		SET vIdDep2  = 2; 
+		
+		SET vId3     = 003;
+		SET vNombre3 = 'MARIO VILLACORTA';
+		SET vEdad3   = 38;
+		SET vRol3    = 'PROGRAMADOR';
+		SET vIdDep3  = 3; 
+ 	 		
+		CREATE LASTCHILD OF OutputRoot DOMAIN( 'JSON' ); 
+		SET OutputRoot.JSON.Data.auditoria.ipApp      = vIpApp;  
+		SET OutputRoot.JSON.Data.auditoria.nombreApp  = vNombreApp;
+		SET OutputRoot.JSON.Data.auditoria.usuarioApp = vUsuarioApp; 
+		SET OutputRoot.JSON.Data.auditoria.codigoApp  = vCodigoApp;  
+		SET OutputRoot.JSON.Data.auditoria.codigoHttp = vCodigoHttp;  
+		SET OutputRoot.JSON.Data.auditoria.mensajeApp = vMensajeApp;  	
+		
+		--IMPORTANTE: En ESQL los 'ARREGLOS' inician desde: 1 
+		CREATE FIELD OutputRoot.JSON.Data.listaEmpleados IDENTITY( JSON.Array )listaEmpleados; 
+		SET OutputRoot.JSON.Data.listaEmpleados.item[1].id     = vId1; 
+		SET OutputRoot.JSON.Data.listaEmpleados.item[1].nombre = vNombre1;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[1].edad   = vEdad1;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[1].rol    = vRol1;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[1].idDep  = vIdDep1;
+		
+		SET OutputRoot.JSON.Data.listaEmpleados.item[2].id     = vId2; 
+		SET OutputRoot.JSON.Data.listaEmpleados.item[2].nombre = vNombre2;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[2].edad   = vEdad2;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[2].rol    = vRol2;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[2].idDep  = vIdDep2;
+		
+		SET OutputRoot.JSON.Data.listaEmpleados.item[3].id     = vId3; 
+		SET OutputRoot.JSON.Data.listaEmpleados.item[3].nombre = vNombre3;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[3].edad   = vEdad3;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[3].rol    = vRol3;
+		SET OutputRoot.JSON.Data.listaEmpleados.item[3].idDep  = vIdDep3;
+ 
+		RETURN TRUE;
+	END;
+ 
+END MODULE;
+

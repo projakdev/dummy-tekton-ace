@@ -1,0 +1,143 @@
+swagger: "2.0"
+info:
+  description: "CONTRACT/API for the NEW Microservice: dummy-csm-microservice"
+  version: "1.0"
+  title: "CONTRACT/API FOR EMPLOYEE MANAGEMENT"
+  termsOfService: "http://swagger.io/terms/"
+  contact:
+    email: "cesarricardo_guerra19@hotmail.com"
+  license:
+    name: "Apache 2.0"
+    url: "http://www.apache.org/licenses/LICENSE-2.0.html"
+host: "pe.com.capacitacion"
+basePath: "/csm-microservice"
+schemes:
+- "http"
+paths:
+  /post/empleados:
+    post:
+      summary: "Functionality to [REGISTER] an Employee type ENTITY."
+      description: "Functionality to [REGISTER] an Employee type ENTITY."
+      operationId: "agregarEmpleado"
+      produces:
+      - "application/json"
+      parameters:
+      - name: "body"
+        in: "body"
+        description: "The Employee Entity"
+        required: true
+        schema:
+          $ref: "#/definitions/Empleado"
+      responses:
+        "200":
+          description: "SUCCESSFUL PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+        "400":
+          description: "ERROR IN PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+  /delete/empleados/{id}:
+    delete:
+      summary: "Functionality to [DELETE] an Employee type ENTITY."
+      description: "Functionality to [DELETE] an Employee type ENTITY."
+      operationId: "eliminarEmpleado"
+      parameters:
+      - name: "id"
+        in: "path"
+        description: "The Employee ID"
+        required: true
+        type: "integer"
+      responses:
+        "200":
+          description: "SUCCESSFUL PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+        "400":
+          description: "ERROR IN PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+  /get/empleados:
+    get:
+      summary: "Functionality to [QUERY] all Employee type ENTITIES."
+      description: "Functionality to [QUERY] all Employee type ENTITIES."
+      operationId: "consultarEmpleadosAll"
+      responses:
+        "200":
+          description: "SUCCESSFUL PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+        "400":
+          description: "ERROR IN PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+  /get/empleados/{id}:
+    get:
+      summary: "Functionality to [QUERY] a complete Employee type ENTITY by ID."
+      description: "Functionality to [QUERY] a complete Employee type ENTITY by ID."
+      operationId: "consultarEmpleadosPorId"
+      parameters:
+      - name: "id"
+        in: "path"
+        description: "The Employee ID"
+        required: true
+        type: "integer"
+      responses:
+        "200":
+          description: "SUCCESSFUL PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+        "400":
+          description: "ERROR IN PROCESS"
+          schema:
+            $ref: "#/definitions/ResponseEmplMsg"
+definitions:
+  Empleado:
+    type: "object"
+    required:
+    - "nombre"
+    - "edad"
+    - "rol"
+    properties:
+      id:
+        type: "integer"
+      nombre:
+        type: "string"
+      edad:
+        type: "integer"
+      rol:
+        type: "string"
+      idDep:
+        type: "integer"
+  ResponseEmplMsg:
+    type: "object"
+    properties:
+      auditoria:
+        type: "object"
+        required:
+        - "ipApp"
+        - "nombreApp"
+        - "usuarioApp"
+        - "codigoApp"
+        - "codigoHttp"
+        - "mensajeApp"
+        properties:
+          ipApp:
+            type: "string"
+          nombreApp:
+            type: "string"
+          usuarioApp:
+            type: "string"
+          codigoApp:
+            type: "string"
+          codigoHttp:
+            type: "string"
+          mensajeApp:
+            type: "string"
+      listaEmpleados:
+        type: "array"
+        items:
+          $ref: "#/definitions/Empleado"
+externalDocs:
+  description: "Find more about SWAGGER"
+  url: "http://swagger.io"
